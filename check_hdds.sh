@@ -4,6 +4,11 @@
 # serial number, WWN (as reported by smartctl), overall health status, key S.M.A.R.T.
 # values (R, P, U, S), head parking count (Load_Cycle_Count), work time (from Power_On_Hours)
 # using a space delimiter between days and hours, temperature, and an advisory message.
+#
+# For drives that are connected via USB bridges, the script automatically uses the
+# "-d sat" option. The initial disk scan is performed using both "-d sat" and "-d nvme"
+# so that proper device types are detected.
+#
 # Requires smartmontools (smartctl)
 #
 # Column Explanations:
@@ -28,22 +33,23 @@ if ! command -v smartctl &> /dev/null; then
 fi
 
 echo "Scanning for HDDs..."
-# Get list of drives detected by smartctl
-disks=$(smartctl --scan | awk '{print $1}')
+
+# Perform two scans: one for SATA (including USB bridges) and one for NVMe devices.
+# Then merge the results (unique device paths) for further processing.
+disks=$( { smartctl --scan -d sat; smartctl --scan -d nvme; } | sort -u | awk '{print $1}' )
 if [ -z "$disks" ]; then
   echo "No disks found by smartctl."
   exit 0
 fi
 
 # Define fixed column widths:
-# Disk (10), Model (20), Serial (20), WWN (20), Health (8), R (4), P (4),
+# Disk (10), Model (22), Serial (20), WWN (20), Health (8), R (4), P (4),
 # U (4), S (4), HP (8), Work (12), Temp (6), Advice (8)
-header_fmt="%-10s %-20s %-20s %-20s %-8s %-4s %-4s %-4s %-4s %-8s %-12s %-6s %-8s\n"
-row_fmt="%-10s %-20s %-20s %-20s %-8s %-4s %-4s %-4s %-4s %-8s %-12s %-6s %-8s\n"
+header_fmt="%-10s %-22s %-20s %-20s %-8s %-4s %-4s %-4s %-4s %-8s %-12s %-6s %-8s\n"
+row_fmt="%-10s %-22s %-20s %-20s %-8s %-4s %-4s %-4s %-4s %-8s %-12s %-6s %-8s\n"
 
-# Create header string using the fixed format
+# Create header string and dashed line of matching width
 header=$(printf "$header_fmt" "Disk" "Model" "Serial" "WWN" "Health" "R" "P" "U" "S" "HP" "Work" "Temp" "Advice")
-# Calculate header length (excluding newline) and generate dashed line of the same length
 header_len=$(echo -n "$header" | wc -c)
 dashes=$(printf '%*s' "$header_len" '' | tr ' ' '-')
 
@@ -53,8 +59,16 @@ echo "$dashes"
 
 # Process each disk
 for disk in $disks; do
-  # Get device information
-  info=$(smartctl -i "$disk")
+  # Determine device type based on previous scan or error check.
+  # We'll default to no type and then detect if an unknown USB bridge is reported.
+  TYPE=""
+  usb_check=$(smartctl -i "$disk" 2>&1)
+  if echo "$usb_check" | grep -qi "Unknown USB bridge"; then
+    TYPE="-d sat"
+  fi
+
+  # Get device information with the determined TYPE option
+  info=$(smartctl $TYPE -i "$disk")
   model=$(echo "$info" | grep -i "Device Model" | awk -F: '{print $2}' | xargs)
   if [ -z "$model" ]; then
     model=$(echo "$info" | grep -i "Model Family" | awk -F: '{print $2}' | xargs)
@@ -72,14 +86,14 @@ for disk in $disks; do
   wwn=${wwn:-"N/A"}
   
   # Get overall health status
-  health_output=$(smartctl -H "$disk")
+  health_output=$(smartctl $TYPE -H "$disk")
   health=$(echo "$health_output" | grep -i "SMART overall-health self-assessment test result" | cut -d: -f2 | xargs)
   if [ -z "$health" ]; then
     health="Unknown"
   fi
   
   # Get detailed SMART attributes
-  smart_data=$(smartctl -A "$disk")
+  smart_data=$(smartctl $TYPE -A "$disk")
   
   # Extract key parameters (default to 0 if not found)
   r=$(echo "$smart_data" | awk '/Reallocated_Sector_Ct/ {print $10}')
