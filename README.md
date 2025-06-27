@@ -20,7 +20,7 @@ This repository contains a Bash script that uses **smartctl** (from the [smartmo
 You can download the script directly using `wget`:
 
 ```bash
-wget https://raw.githubusercontent.com/azinchen/check_hdds/main/check_hdds.sh
+wget https://raw.githubusercontent.com/azinchen/check-hdds/main/check-hdds.sh
 ```
 ## Usage
 
@@ -28,14 +28,14 @@ wget https://raw.githubusercontent.com/azinchen/check_hdds/main/check_hdds.sh
 
    After downloading, ensure the script has execute permissions:
    ```bash
-   chmod +x check_hdds.sh
+   chmod +x check-hdds.sh
    ```
 
 2. **Run the Script**
 
    Execute the script with root privileges:
    ```bash
-   sudo ./check_hdds.sh
+   sudo ./check-hdds.sh
    ```
 
 3. **Review the Output**
